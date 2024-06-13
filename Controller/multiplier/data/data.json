@@ -1,0 +1,26 @@
+{
+  "base_rates": {
+    "Micro": {
+      "Oneway": 11,
+      "Roundtrip": 9
+    },
+    "Sedan": {
+      "Oneway": 12,
+      "Roundtrip": 10
+    },
+    "SUV": {
+      "Oneway": 17,
+      "Roundtrip": 14
+    },
+    "MUV": {
+      "Oneway": 15,
+      "Roundtrip": 12
+    }
+  },
+  "average_multipliers": {
+    "Micro": 1,
+    "Sedan": 1,
+    "SUV": 1,
+    "MUV": 1
+  }
+}
