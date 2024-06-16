@@ -7,6 +7,10 @@ const {
   verifyOTP,
   login,
   authenticate,
+  logout,
+  citysearch,
+  getRates,
+  updateCity,
 } = require("../Controller/controller");
 const verifyToken = require("../Middleware/auth");
 
@@ -20,10 +24,18 @@ Router.post("/register", signup);
 
 Router.post("/verify-otp", verifyOTP);
 
-Router.post("/search", search);
+Router.post("/search", verifyToken, search);
 
-Router.post("/calculate-distance", distance);
+Router.post("/search-city", verifyToken, citysearch);
+
+Router.post("/calculate-distance", verifyToken, distance);
+
+Router.post("/get-rates", verifyToken, getRates);
 
 Router.post("/authenticate", verifyToken, authenticate);
+
+Router.post("/logout", verifyToken, logout);
+
+Router.post("/update-city", verifyToken, updateCity);
 
 module.exports = Router;

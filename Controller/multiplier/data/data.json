@@ -2,19 +2,23 @@
   "base_rates": {
     "Micro": {
       "Oneway": 11,
-      "Roundtrip": 9
+      "Roundtrip": 9,
+      "waiting_charge": 100
     },
     "Sedan": {
       "Oneway": 12,
-      "Roundtrip": 10
+      "Roundtrip": 10,
+      "waiting_charge": 120
     },
     "SUV": {
       "Oneway": 17,
-      "Roundtrip": 14
+      "Roundtrip": 14,
+      "waiting_charge": 200
     },
     "MUV": {
       "Oneway": 15,
-      "Roundtrip": 12
+      "Roundtrip": 12,
+      "waiting_charge": 160
     }
   },
   "average_multipliers": {

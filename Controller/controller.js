@@ -52,6 +52,12 @@ exports.login = async (req, res) => {
         token,
         validity: new Date(new Date().getTime() + 1209600000),
         message: "Login Successful",
+        data: {
+          Name: user.Name,
+          EmailId: user.EmailId,
+          PhoneNo: user.PhoneNo,
+          City: user.City,
+        },
       });
     } else {
       const error = new Error("Invalid Credentials");
@@ -200,6 +206,12 @@ exports.verifyOTP = async (req, res) => {
         token,
         validity: new Date(new Date().getTime() + 1209600000),
         message: "Registration Successfull",
+        data: {
+          Name: user.Name,
+          EmailId: user.EmailId,
+          PhoneNo: user.PhoneNo,
+          City: user.City,
+        },
       });
     } else {
       throw new Error("Please enter a valid OTP");
@@ -212,7 +224,16 @@ exports.verifyOTP = async (req, res) => {
 exports.authenticate = async (req, res) => {
   try {
     let user = req.user;
-    res.status(200).json({ success: true, data: user });
+    res.status(200).json({
+      success: true,
+      data: {
+        UserId: user.UserId,
+        Name: user.Name,
+        PhoneNo: user.PhoneNo,
+        EmailId: user.EmailId,
+        City: user.City,
+      },
+    });
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -224,7 +245,7 @@ exports.authenticate = async (req, res) => {
 // === === === search === === === //
 const { LRUCache } = require("lru-cache");
 const fs = require("fs");
-const cacheFilePath = "./cache.json";
+const cacheFilePath = "./cache/cache.json";
 let cache;
 
 try {
@@ -252,12 +273,11 @@ exports.search = async (req, res) => {
     console.log(`Found result in cache for query: ${query}`);
     return res.send(cachedResult);
   }
-  console.log(`API ${query}`);
   try {
     const response = await fetch(
       `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
         query
-      )}&key=${process.env.GOOGLE}&components=country:IN`
+      )}&key=${process.env.GOOGLE}&components=country:IN&types=geocode`
     );
     const data = await response.json();
 
@@ -300,8 +320,84 @@ process.on("exit", saveCacheToFile);
   });
 });
 
+// === === === search city === === === //
+const citycacheFilePath = "./cache/citycache.json";
+let citycache;
+
+try {
+  const cachedData = fs.readFileSync(citycacheFilePath);
+  const parsedCache = JSON.parse(cachedData);
+  citycache = new LRUCache({ max: 400000 });
+  Object.entries(parsedCache).forEach(([key, value]) => {
+    citycache.set(value[0], value[1].value);
+  });
+  console.log("place city Cache loaded from file.");
+} catch (error) {
+  console.error("Error loading cache:", error);
+  citycache = new LRUCache({ max: 400000 });
+}
+
+exports.citysearch = async (req, res) => {
+  const { query } = req.body;
+
+  if (!query) {
+    return res.status(400).send({ error: "Search query is required" });
+  }
+
+  const cachedResult = citycache.get(query.toLowerCase());
+  if (cachedResult) {
+    console.log(`Found result in cache for query: ${query}`);
+    return res.send(cachedResult);
+  }
+  try {
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+        query
+      )}&key=${process.env.GOOGLE}&components=country:IN&types=(cities)`
+    );
+    const data = await response.json();
+
+    const predictions = data.predictions.map((prediction) => ({
+      description: prediction.description,
+      place_id: prediction.place_id,
+    }));
+
+    console.log(`Adding result to cache for query: ${query}`);
+    citycache.set(query.toLowerCase(), predictions);
+
+    res.send(predictions);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .send({ error: "An error occurred while searching for cities" });
+  }
+};
+
+// Save cache to file before process exit
+const savecityCacheToFile = () => {
+  try {
+    const dump = citycache.dump();
+    fs.writeFileSync(citycacheFilePath, JSON.stringify(dump));
+    console.log("city Cache saved to file.");
+  } catch (error) {
+    console.error("Error saving cache:", error);
+  }
+};
+
+// Handle process exit event
+process.on("exit", savecityCacheToFile);
+
+// Handle process termination signals
+["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) => {
+  process.on(signal, () => {
+    savecityCacheToFile();
+    process.exit();
+  });
+});
+
 // === === === distance === === === //
-const distancecache = "./d_cache.json";
+const distancecache = "./cache/d_cache.json";
 
 let d_cache;
 
@@ -372,7 +468,6 @@ exports.distance = async (req, res) => {
     d_cache.set(`${places[0].place_id}${places[1].place_id}`, data.routes[0]);
     res.json({ ...data.routes[0], rates: getCurrentRates() });
   } catch (error) {
-    console.error(error);
     res
       .status(500)
       .json({ error: "An error occurred while processing the request" });
@@ -400,3 +495,92 @@ process.on("exit", savedCacheToFile);
     process.exit();
   });
 });
+
+// === === === Rates === === === //
+
+exports.getRates = async (req, res) => {
+  try {
+    res.json({ rates: getCurrentRates() });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === logout === === === //
+
+exports.logout = async (req, res) => {
+  try {
+    const { UserId, tokens } = req.user;
+    const { token } = req.body;
+    console.log("logout");
+    let updated = tokens.filter((itm) => itm.token != token);
+    await User.updateOne({ UserId }, { tokens: updated });
+    res.status(200).json({ success: true, message: "Looged out" });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === longitude & latitude === === === //
+
+async function getLatLong(placeId) {
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&key=${process.env.GOOGLE}`;
+  try {
+    if (!placeId) {
+      if (!response.ok) {
+        throw new Error(`please provide a placeId`);
+      }
+    }
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    const data = await response.json();
+    const result = data.result;
+    if (result) {
+      const location = result.geometry.location;
+      return {
+        latitude: location.lat,
+        longitude: location.lng,
+        description: result.formatted_address,
+        place_id: result.place_id,
+      };
+    } else {
+      throw new Error("No result found for the provided place_id.");
+    }
+  } catch (error) {
+    console.error("Error fetching location:", error);
+    return null;
+  }
+}
+
+exports.updateCity = async (req, res) => {
+  try {
+    let { City } = req.body;
+    if (!City) {
+      throw new Error("Please select a city from list");
+    } else if (!City.place_id) {
+      throw new Error("Please select a city from list");
+    }
+    let user = req.user;
+    console.log(City);
+    let lola = await getLatLong(City.place_id);
+    let result = await User.updateOne({ UserId: user.UserId }, { City: lola });
+    res.status(200).json({
+      success: true,
+      message: "City updated successfully",
+      City: lola,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
