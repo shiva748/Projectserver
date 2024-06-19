@@ -3,7 +3,11 @@ const Usr = require("../Database/collection/User");
 
 const verifyToken = async (req, res, next) => {
   try {
-    const token = req.body.token;
+    // const token = req.body.token;
+    if (!req.headers.authorization) {
+      throw new Error("No Authorization found");
+    }
+    const token = req.headers.authorization.split(" ")[1];
 
     if (!token) {
       return res

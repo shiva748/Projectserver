@@ -232,6 +232,7 @@ exports.authenticate = async (req, res) => {
         PhoneNo: user.PhoneNo,
         EmailId: user.EmailId,
         City: user.City,
+        Operator: user.Operator,
       },
     });
   } catch (error) {
@@ -514,9 +515,9 @@ exports.getRates = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     const { UserId, tokens } = req.user;
-    const { token } = req.body;
-    console.log("logout");
+    const token = req.token;
     let updated = tokens.filter((itm) => itm.token != token);
+    console.log(updated);
     await User.updateOne({ UserId }, { tokens: updated });
     res.status(200).json({ success: true, message: "Looged out" });
   } catch (error) {
@@ -529,37 +530,67 @@ exports.logout = async (req, res) => {
 
 // === === === longitude & latitude === === === //
 
-async function getLatLong(placeId) {
-  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&key=${process.env.GOOGLE}`;
+// async function getLatLong(placeId) {
+//   const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&key=${process.env.GOOGLE}`;
+//   try {
+//     if (!placeId) {
+//       if (!response.ok) {
+//         throw new Error(`please provide a placeId`);
+//       }
+//     }
+//     const response = await fetch(url);
+//     if (!response.ok) {
+//       throw new Error(`HTTP error! Status: ${response.status}`);
+//     }
+//     const data = await response.json();
+//     const result = data.result;
+//     if (result) {
+//       const location = result.geometry.location;
+//       return {
+//         latitude: location.lat,
+//         longitude: location.lng,
+//         description: result.formatted_address,
+//         place_id: result.place_id,
+//       };
+//     } else {
+//       throw new Error("No result found for the provided place_id.");
+//     }
+//   } catch (error) {
+//     console.error("Error fetching location:", error);
+//     return null;
+//   }
+// }
+async function getLatLong(address) {
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+    address
+  )}&key=${process.env.GOOGLE}`;
   try {
-    if (!placeId) {
-      if (!response.ok) {
-        throw new Error(`please provide a placeId`);
-      }
+    if (!address) {
+      throw new Error("Please provide an address");
     }
+
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
+
     const data = await response.json();
-    const result = data.result;
-    if (result) {
-      const location = result.geometry.location;
+    if (data.results && data.results.length > 0) {
+      const location = data.results[0].geometry.location;
       return {
         latitude: location.lat,
         longitude: location.lng,
-        description: result.formatted_address,
-        place_id: result.place_id,
+        description: data.results[0].formatted_address,
+        place_id: data.results[0].place_id,
       };
     } else {
-      throw new Error("No result found for the provided place_id.");
+      throw new Error("No result found for the provided address.");
     }
   } catch (error) {
-    console.error("Error fetching location:", error);
+    console.error("Error fetching location from Google Maps:", error);
     return null;
   }
 }
-
 exports.updateCity = async (req, res) => {
   try {
     let { City } = req.body;
@@ -569,14 +600,161 @@ exports.updateCity = async (req, res) => {
       throw new Error("Please select a city from list");
     }
     let user = req.user;
-    console.log(City);
-    let lola = await getLatLong(City.place_id);
+    let lola = await getLatLong(City.description);
     let result = await User.updateOne({ UserId: user.UserId }, { City: lola });
     res.status(200).json({
       success: true,
       message: "City updated successfully",
       City: lola,
     });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === Register as operator === === === //
+
+const { busboyPromise } = require("../busboy/busboy");
+const { saveFilesToFolder, cleanupFiles } = require("../busboy/savefile");
+const path = require("path");
+const Operator = require("../Database/collection/Operator");
+
+exports.registerOperator = async (req, res) => {
+  try {
+    const user = req.user;
+    if (user.Operator && user.Operator.OperatorId) {
+      throw new Error(`You already have a Operator profile`);
+    }
+    const { fields, files } = await busboyPromise(req);
+
+    ["AadhaarFront", "AadhaarRear", "Profile"].forEach((itm) => {
+      if (!files[itm]) {
+        throw new Error(`Please select a ${itm} image`);
+      }
+    });
+
+    const requiredFields = [
+      {
+        key: "FirstName",
+        validator: (value) => validator.isLength(value, { min: 3, max: 20 }),
+        message: "First name must be 3 to 20 characters long",
+      },
+      {
+        key: "LastName",
+        validator: (value) => validator.isLength(value, { min: 3, max: 20 }),
+        message: "Last name must be 3 to 20 characters long",
+      },
+      {
+        key: "Dob",
+        validator: (value) => !!value,
+        message: "Please enter your date of birth",
+      },
+      {
+        key: "AadhaarNumber",
+        validator: (value) => validator.isLength(value, { min: 12, max: 12 }),
+        message: "Aadhaar number must be exactly 12 digits long",
+      },
+      {
+        key: "EmergencyNumber",
+        validator: (value) => validator.isMobilePhone(value, "en-IN"),
+        message: "Please enter a valid Indian mobile number",
+      },
+    ];
+
+    const isAdult = (dob) => {
+      const currentDate = new Date();
+      const dobDate = new Date(dob);
+      const ageDifference = currentDate - dobDate;
+      const age = Math.floor(ageDifference / (1000 * 60 * 60 * 24 * 365.25));
+      return age >= 18;
+    };
+
+    requiredFields.push({
+      key: "Dob",
+      validator: (value) => isAdult(value),
+      message: "You must be at least 18 years old",
+    });
+
+    requiredFields.forEach(({ key, validator, message }) => {
+      if (!fields[key]) {
+        throw new Error(`Please enter your ${key}`);
+      }
+      if (validator && !validator(fields[key])) {
+        throw new Error(`${message}`);
+      }
+    });
+    if (user.PhoneNo === `+91${fields.EmergencyNumber}`) {
+      throw new Error("Please provide a different emergency contact number");
+    }
+    const id = "Operator-" + user.UserId.slice(5, user.UserId.length);
+    let folderPath = path.join(__dirname, "../files/operator", id);
+    let filesave;
+    try {
+      filesave = await saveFilesToFolder(files, folderPath);
+    } catch (error) {
+      cleanupFiles(folderPath);
+      throw error;
+    }
+
+    const operator = new Operator({
+      OperatorId: id,
+      FirstName: fields.FirstName,
+      LastName: fields.LastName,
+      City: user.City,
+      Dob: fields.Dob,
+      AadhaarCard: {
+        Number: fields.AadhaarNumber,
+        FrontImage: filesave.AadhaarFront,
+        BackImage: filesave.AadhaarRear,
+      },
+      EmergencyNumber: fields.EmergencyNumber,
+      Profile: filesave.Profile,
+    });
+    try {
+      const result = await operator.save();
+      const update = await User.updateOne(
+        { UserId: user.UserId },
+        {
+          Operator: {
+            OperatorId: id,
+            Status: "pending",
+            verified: false,
+          },
+        }
+      );
+      res
+        .status(201)
+        .json({ message: "Operator profile successfully created." });
+    } catch (error) {
+      cleanupFiles(folderPath);
+      throw error;
+    }
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === get Operator Profile === === === //
+
+exports.OperatorProfile = async (req, res) => {
+  try {
+    const user = req.user;
+    const id = "Operator-" + user.UserId.slice(5, user.UserId.length);
+    let operator = await Operator.findOne({ OperatorId: id });
+    if (operator) {
+      res.status(200).json({ success: true, data: operator });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "Invalid request no operator profile found",
+      });
+    }
   } catch (error) {
     res.status(400).json({
       success: false,

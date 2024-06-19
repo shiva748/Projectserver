@@ -11,6 +11,8 @@ const {
   citysearch,
   getRates,
   updateCity,
+  registerOperator,
+  OperatorProfile,
 } = require("../Controller/controller");
 const verifyToken = require("../Middleware/auth");
 
@@ -30,12 +32,16 @@ Router.post("/search-city", verifyToken, citysearch);
 
 Router.post("/calculate-distance", verifyToken, distance);
 
-Router.post("/get-rates", verifyToken, getRates);
+Router.get("/get-rates", verifyToken, getRates);
 
-Router.post("/authenticate", verifyToken, authenticate);
+Router.get("/authenticate", verifyToken, authenticate);
 
-Router.post("/logout", verifyToken, logout);
+Router.get("/logout", verifyToken, logout);
 
 Router.post("/update-city", verifyToken, updateCity);
+
+Router.post("/operator-registration", verifyToken, registerOperator);
+
+Router.get("/Operator/profile", verifyToken, OperatorProfile);
 
 module.exports = Router;

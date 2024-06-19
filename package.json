@@ -11,11 +11,13 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.2",
+    "busboy": "^1.6.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "googleapis": "^137.1.0",
     "jsonwebtoken": "^9.0.2",
     "lru-cache": "^10.2.2",
+    "mime-types": "^2.1.35",
     "mongoose": "^8.4.1",
     "otpless-node-js-auth-sdk": "^1.0.8",
     "uniqid": "^5.4.0",

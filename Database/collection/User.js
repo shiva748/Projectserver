@@ -53,6 +53,18 @@ const userSchema = new Schema({
     trim: true,
     match: /^\S+@\S+\.\S+$/,
   },
+  Operator: {
+    OperatorId: {
+      type: String,
+    },
+    Status: {
+      type: String,
+      enum: ["pending", "verified", "active", "suspended"],
+    },
+    verified: {
+      type: Boolean,
+    },
+  },
   tokens: [
     {
       token: {
