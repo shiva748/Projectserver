@@ -4,7 +4,7 @@ exports.busboyPromise = (req) => {
   return new Promise((resolve, reject) => {
     const bb = busboy({ headers: req.headers });
     const formData = { fields: {}, files: {} };
-    const MAX_SIZE = 256 * 1024; // 256KB
+    const MAX_SIZE = 1536 * 1024;
 
     bb.on("file", (name, file, info) => {
       const { filename, encoding, mimeType } = info;
@@ -18,7 +18,7 @@ exports.busboyPromise = (req) => {
           file.resume();
           reject(
             new Error(
-              `File ${filename} exceeds the maximum allowed size of 256KB.`
+              `File ${filename} exceeds the maximum allowed size of 1.5MB.`
             )
           );
           return;

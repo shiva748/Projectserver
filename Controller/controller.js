@@ -629,7 +629,6 @@ exports.registerOperator = async (req, res) => {
       throw new Error(`You already have a Operator profile`);
     }
     const { fields, files } = await busboyPromise(req);
-
     ["AadhaarFront", "AadhaarRear", "Profile"].forEach((itm) => {
       if (!files[itm]) {
         throw new Error(`Please select a ${itm} image`);
@@ -663,21 +662,6 @@ exports.registerOperator = async (req, res) => {
         message: "Please enter a valid Indian mobile number",
       },
     ];
-
-    const isAdult = (dob) => {
-      const currentDate = new Date();
-      const dobDate = new Date(dob);
-      const ageDifference = currentDate - dobDate;
-      const age = Math.floor(ageDifference / (1000 * 60 * 60 * 24 * 365.25));
-      return age >= 18;
-    };
-
-    requiredFields.push({
-      key: "Dob",
-      validator: (value) => isAdult(value),
-      message: "You must be at least 18 years old",
-    });
-
     requiredFields.forEach(({ key, validator, message }) => {
       if (!fields[key]) {
         throw new Error(`Please enter your ${key}`);
@@ -686,19 +670,48 @@ exports.registerOperator = async (req, res) => {
         throw new Error(`${message}`);
       }
     });
+    const dobPattern = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
+    if (!dobPattern.test(fields.Dob)) {
+      throw new Error("Dob must be in format DD/MM/YYYY.");
+    }
+
+    const [day, month, year] = fields.Dob.split("/").map(Number);
+    const dob = new Date(year, month - 1, day);
+
+    const age = new Date().getFullYear() - dob.getFullYear();
+    const monthDifference = new Date().getMonth() - dob.getMonth();
+    const dayDifference = new Date().getDate() - dob.getDate();
+
+    if (
+      age < 18 ||
+      (age === 18 &&
+        (monthDifference < 0 || (monthDifference === 0 && dayDifference < 0)))
+    ) {
+      throw new Error("User must be at least 18 years old.");
+    }
+
     if (user.PhoneNo === `+91${fields.EmergencyNumber}`) {
       throw new Error("Please provide a different emergency contact number");
     }
+
+    if (!fields.City) {
+      throw new Error("Please Select a City");
+    }
+    fields.City = JSON.parse(fields.City);
+    if (!fields.City.place_id || !fields.City.description) {
+      throw new Error("Please Select a City");
+    }
+    fields.City = await getLatLong(fields.City.description);
     const id = "Operator-" + user.UserId.slice(5, user.UserId.length);
     let folderPath = path.join(__dirname, "../files/operator", id);
     let filesave;
+
     try {
       filesave = await saveFilesToFolder(files, folderPath);
     } catch (error) {
       cleanupFiles(folderPath);
       throw error;
     }
-
     const operator = new Operator({
       OperatorId: id,
       FirstName: fields.FirstName,
@@ -712,6 +725,7 @@ exports.registerOperator = async (req, res) => {
       },
       EmergencyNumber: fields.EmergencyNumber,
       Profile: filesave.Profile,
+      City: fields.City,
     });
     try {
       const result = await operator.save();
@@ -725,9 +739,15 @@ exports.registerOperator = async (req, res) => {
           },
         }
       );
-      res
-        .status(201)
-        .json({ message: "Operator profile successfully created." });
+      res.status(201).json({
+        success: true,
+        message: "Operator profile successfully created.",
+        Operator: {
+          OperatorId: id,
+          Status: "pending",
+          verified: false,
+        },
+      });
     } catch (error) {
       cleanupFiles(folderPath);
       throw error;

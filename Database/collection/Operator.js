@@ -50,7 +50,7 @@ const operatorSchema = new Schema(
       type: citySchema,
     },
     Dob: {
-      type: Date,
+      type: String,
       required: true,
     },
     AadhaarCard: {
