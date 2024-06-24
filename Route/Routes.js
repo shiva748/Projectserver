@@ -13,6 +13,11 @@ const {
   updateCity,
   registerOperator,
   OperatorProfile,
+  OperatorImage,
+  SearchDriver,
+  RegisterDriver,
+  getActivation,
+  RegisterCab,
 } = require("../Controller/controller");
 const verifyToken = require("../Middleware/auth");
 
@@ -43,5 +48,15 @@ Router.post("/update-city", verifyToken, updateCity);
 Router.post("/operator-registration", verifyToken, registerOperator);
 
 Router.get("/Operator/profile", verifyToken, OperatorProfile);
+
+Router.post("/Operator/SearchDriver", verifyToken, SearchDriver);
+
+Router.get("/Operator/media/:OperatorId/image", OperatorImage);
+
+Router.post("/Operator/driver-registration", verifyToken, RegisterDriver);
+
+Router.post("/Operator/Activation/status", verifyToken, getActivation);
+
+Router.post("/Operator/cab-registration", verifyToken, RegisterCab);
 
 module.exports = Router;

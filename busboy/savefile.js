@@ -39,7 +39,32 @@ exports.saveFilesToFolder = async (files, folderPath) => {
     throw new Error(`Error saving files: ${error.message}`);
   }
 };
+exports.copyRecursive = async (src, dest) => {
+  try {
+    const stats = await fs.promises.stat(src);
 
+  if (stats.isDirectory()) {
+    await fs.promises.mkdir(dest, { recursive: true });
+    const entries = await fs.promises.readdir(src, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+
+      if (entry.isDirectory()) {
+        await copyRecursive(srcPath, destPath);
+      } else {
+        await fs.promises.copyFile(srcPath, destPath);
+      }
+    }
+  } else {
+    await fs.promises.copyFile(src, dest);
+  }
+  } catch (error) {
+    console.error("Error Copying files:", error);
+    throw new Error(`Error Copying files: ${error.message}`);
+  }
+};
 exports.cleanupFiles = async (folderPath) => {
   try {
     const files = await fs.promises.readdir(folderPath);
@@ -51,5 +76,6 @@ exports.cleanupFiles = async (folderPath) => {
     console.log("Files and folder removed successfully.");
   } catch (error) {
     console.error("Error cleaning up files:", error);
+    throw new Error(`Error cleaning up files: ${error.message}`);
   }
 };

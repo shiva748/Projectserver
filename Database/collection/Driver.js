@@ -3,29 +3,41 @@ const Schema = mongoose.Schema;
 
 const driverSchema = new Schema(
   {
-    FirstName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    LastName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    EmailId: {
+    DriverId: {
       type: String,
       required: true,
       unique: true,
+    },
+    UserId: {
+      type: String,
+      required: true,
+    },
+    OperatorId: {
+      type: String,
+      required: true,
+    },
+    Name: {
+      type: String,
+      required: true,
       trim: true,
-      match: /^\S+@\S+\.\S+$/,
+    },
+    Dob: {
+      type: String,
+      required: true,
     },
     PhoneNo: {
       type: String,
       required: true,
-      trim: true,
-      unique: true,
-      match: /^[0-9]{10}$/,
+    },
+    Profile: {
+      type: String,
+      required: true,
+    },
+    Status: {
+      type: String,
+      required: true,
+      enum: ["pending", "verified", "suspended", "unlinked"],
+      default: "pending",
     },
     AadhaarCard: {
       Number: {
@@ -49,7 +61,7 @@ const driverSchema = new Schema(
         trim: true,
       },
       Expiry: {
-        type: Date,
+        type: String,
         required: true,
       },
       FrontImage: {

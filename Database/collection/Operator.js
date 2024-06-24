@@ -30,12 +30,7 @@ const operatorSchema = new Schema(
       type: Boolean,
       default: false,
     },
-    FirstName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    LastName: {
+    Name: {
       type: String,
       required: true,
       trim: true,

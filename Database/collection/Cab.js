@@ -2,7 +2,13 @@ const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
 const cabSchema = new Schema(
-  {
+  { 
+    CabId:{
+      type:String,
+      required:true,
+      unique:true,
+      trim:true
+    },
     Manufacturer: {
       type: String,
       required: true,
@@ -13,51 +19,42 @@ const cabSchema = new Schema(
       required: true,
       trim: true,
     },
+    Category:{
+      type:String,
+      required:true,
+      enum:["Mini","Prime Sedan", "Prime MUV","Prime SUV"]
+    },
     CabNumber: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
     Photo: {
       type: String,
       required: true,
     },
-    RegistrationCertificate: {
-      FrontPhoto: {
+    Document: {
+      Authorization: {
         type: String,
         required: true,
       },
-      BackPhoto: {
+      Permit: {
         type: String,
         required: true,
       },
-      ProductionYear: {
-        type: Number,
+      RegistrationCertificate: {
+        type: String,
         required: true,
       },
     },
-    Permit: {
-      PartA: {
-        type: String,
-        required: true,
-      },
-      PartB: {
-        type: String,
-        required: true,
-      },
-      OtherPermit: {
-        type: String,
-      },
-    },
-    Operator: {
-      type: Schema.Types.ObjectId,
+    OperatorId: {
+      type: String,
       ref: "Operator",
       required: true,
     },
     Status: {
       type: String,
-      enum: ["pending", "verified", "suspended"],
+      enum: ["pending", "verified", "suspended", "unlinked"],
       default: "pending",
       required: true,
     },

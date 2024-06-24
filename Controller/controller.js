@@ -5,12 +5,11 @@ const Bcrypt = require("bcryptjs");
 const { sendOTP, verifyOTP } = require("otpless-node-js-auth-sdk");
 const uniqid = require("uniqid");
 const { getCurrentRates } = require("./multiplier/fare");
+const Driver = require("../Database/collection/Driver");
 exports.login = async (req, res) => {
   try {
-    console.log("HI");
     const { EmailId, PhoneNo, Password } = req.body;
     let filter = {};
-    console.log(EmailId, PhoneNo, Password);
     if (!EmailId && !PhoneNo) {
       const error = new Error("either Email or PhoneNo is required");
       error.status = 400;
@@ -618,7 +617,11 @@ exports.updateCity = async (req, res) => {
 // === === === Register as operator === === === //
 
 const { busboyPromise } = require("../busboy/busboy");
-const { saveFilesToFolder, cleanupFiles } = require("../busboy/savefile");
+const {
+  saveFilesToFolder,
+  cleanupFiles,
+  copyRecursive,
+} = require("../busboy/savefile");
 const path = require("path");
 const Operator = require("../Database/collection/Operator");
 
@@ -634,17 +637,14 @@ exports.registerOperator = async (req, res) => {
         throw new Error(`Please select a ${itm} image`);
       }
     });
-
+    if (files.length > 3) {
+      throw new Error("Invalid request");
+    }
     const requiredFields = [
       {
-        key: "FirstName",
+        key: "Name",
         validator: (value) => validator.isLength(value, { min: 3, max: 20 }),
-        message: "First name must be 3 to 20 characters long",
-      },
-      {
-        key: "LastName",
-        validator: (value) => validator.isLength(value, { min: 3, max: 20 }),
-        message: "Last name must be 3 to 20 characters long",
+        message: "Name must be 3 to 20 characters long",
       },
       {
         key: "Dob",
@@ -714,8 +714,7 @@ exports.registerOperator = async (req, res) => {
     }
     const operator = new Operator({
       OperatorId: id,
-      FirstName: fields.FirstName,
-      LastName: fields.LastName,
+      Name: fields.Name,
       City: user.City,
       Dob: fields.Dob,
       AadhaarCard: {
@@ -774,6 +773,408 @@ exports.OperatorProfile = async (req, res) => {
         success: false,
         message: "Invalid request no operator profile found",
       });
+    }
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === Operator Image === === === //
+
+exports.OperatorImage = async (req, res) => {
+  try {
+    const { OperatorId } = req.params;
+    let operator = await Operator.findOne({ OperatorId: OperatorId });
+    let filePath = path.join(
+      __dirname,
+      `../files/operator/${OperatorId}/${operator.Profile}`
+    );
+
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(__dirname, `../files/NoProfile.png`);
+    }
+    return res.status(200).sendFile(filePath);
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === Search for Driver === === === //
+
+exports.SearchDriver = async (req, res) => {
+  try {
+    let user = req.user;
+    if (!user.Operator || !user.Operator.verified) {
+      return res
+        .status(401)
+        .json({ success: false, message: "unauthorized access" });
+    }
+    let { EmailId, PhoneNo } = req.body;
+    if (!EmailId || !PhoneNo) {
+      throw new Error("Please Enter Both EmailId and PhoneNo");
+    }
+    if (!validator.isEmail(EmailId)) {
+      throw new Error("Please enter a valid EmailId");
+    }
+    if (
+      !validator.isMobilePhone(PhoneNo, "en-IN") ||
+      !validator.isLength(PhoneNo, { min: 10, max: 10 })
+    ) {
+      throw new Error("Please enter a valid 10 digit PhoneNo");
+    }
+    const driver = await User.findOne({
+      EmailId: EmailId.toLowerCase(),
+      PhoneNo: "+91" + PhoneNo,
+    });
+    if (driver) {
+      res.status(200).json({
+        success: true,
+        message: "Found a profile",
+        data: { Name: driver.Name, UserId: driver.UserId },
+      });
+    } else {
+      throw new Error("No Profile Found");
+    }
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === Register a Driver === === === //
+
+const isValidFutureDate = (dateString) => {
+  const datePattern = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
+  if (!datePattern.test(dateString)) {
+    throw new Error("Date must be in format DD/MM/YYYY.");
+  }
+
+  const [day, month, year] = dateString.split("/").map(Number);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getDate() !== day ||
+    date.getMonth() !== month - 1 ||
+    date.getFullYear() !== year
+  ) {
+    throw new Error("Invalid date.");
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (date < today) {
+    throw new Error("DL is Expired");
+  }
+
+  return true;
+};
+
+exports.RegisterDriver = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user.Operator || !user.Operator.verified) {
+      return res
+        .status(401)
+        .json({ success: false, message: "unauthorized access" });
+    }
+    const { fields, files } = await busboyPromise(req);
+    let {
+      Name,
+      Dob,
+      AadhaarNumber,
+      DLNumber,
+      DLValidity,
+      PhoneNo,
+      EmailId,
+      IsDriver,
+    } = fields;
+    if (IsDriver === undefined) {
+      throw new Error("IsDriver field in required");
+    }
+    const throwValidationError = (message) => {
+      throw new Error(message);
+    };
+
+    if (IsDriver === "true") {
+      if (files.length > 2) {
+        throwValidationError("Invalid request");
+      }
+      if (!DLNumber) {
+        throwValidationError("DLNumber is required");
+      }
+      if (!DLValidity) {
+        throwValidationError("DLValidity is required");
+      }
+    } else if (IsDriver === "false") {
+      const requiredFields = [
+        "Name",
+        "Dob",
+        "AadhaarNumber",
+        "DLNumber",
+        "DLValidity",
+        "PhoneNo",
+        "EmailId",
+      ];
+
+      for (const field of requiredFields) {
+        if (!fields[field]) {
+          throwValidationError(`${field} is required`);
+        }
+      }
+
+      if (!validator.isLength(Name, { min: 3, max: 50 })) {
+        throwValidationError("Name must be between 1 and 50 characters");
+      }
+      if (!validator.isLength(AadhaarNumber, { min: 12, max: 12 })) {
+        throwValidationError("AadhaarNumber must be a 12-digit number");
+      }
+      if (!validator.isMobilePhone(PhoneNo, "en-IN")) {
+        throwValidationError("PhoneNo must be a 10-digit number");
+      }
+      if (!validator.isEmail(EmailId)) {
+        throwValidationError("Invalid email format for EmailId");
+      }
+      const dobPattern = /^\d{1,2}\/\d{1,2}\/\d{4}$/;
+      if (!dobPattern.test(Dob)) {
+        throw new Error("Dob must be in format DD/MM/YYYY.");
+      }
+
+      const [day, month, year] = Dob.split("/").map(Number);
+      const dob = new Date(year, month - 1, day);
+
+      const age = new Date().getFullYear() - dob.getFullYear();
+      const monthDifference = new Date().getMonth() - dob.getMonth();
+      const dayDifference = new Date().getDate() - dob.getDate();
+
+      if (
+        age < 18 ||
+        (age === 18 &&
+          (monthDifference < 0 || (monthDifference === 0 && dayDifference < 0)))
+      ) {
+        throw new Error("User must be at least 18 years old.");
+      }
+      ["AadhaarFront", "AadhaarRear", "Profile"].forEach((itm) => {
+        if (!files[itm]) {
+          throw new Error(`Please select a ${itm} image`);
+        }
+      });
+      if (files.length > 5) {
+        throwValidationError("Invalid request");
+      }
+    } else {
+      throwValidationError("Invalid value for IsDriver");
+    }
+    if (!DLNumber) {
+      throwValidationError("Please enter a DL Number");
+    }
+    const dlNumberRegex = /^[A-Z]{2}[0-9]{2} ?[0-9]{11}$/;
+    if (!dlNumberRegex.test(DLNumber)) {
+      throwValidationError("Please enter a valid DL Number");
+    }
+    isValidFutureDate(DLValidity);
+    ["DLFront", "DLRear"].forEach((itm) => {
+      if (!files[itm]) {
+        throw new Error(`Please select a ${itm} image`);
+      }
+    });
+    let filter;
+    let profile;
+    if (IsDriver === "true") {
+      filter = { UserId: user.UserId, Status: { $ne: "unlinked" } };
+      profile = await Operator.findOne({
+        OperatorId: user.Operator.OperatorId,
+      });
+      if (!profile) {
+        throwValidationError("No Profile found");
+      }
+    } else {
+      profile = await User.findOne({
+        EmailId: EmailId.toLowerCase(),
+        PhoneNo: "+91" + PhoneNo,
+      });
+      if (!profile) {
+        throwValidationError("No Profile found");
+      }
+      filter = { UserId: profile.UserId, Status: { $ne: "unlinked" } };
+    }
+    let exist = await Driver.findOne(filter);
+    if (exist) {
+      throwValidationError("Profile is already linked as driver");
+    }
+    let id = uniqid("Driver-");
+    let folder = path.join(__dirname, "../files/driver/", id);
+    if (IsDriver === "true") {
+      try {
+        copyRecursive(
+          path.join(__dirname, "../files/operator/", user.Operator.OperatorId),
+          folder
+        );
+      } catch (error) {
+        cleanupFiles(folder);
+        throw error;
+      }
+    }
+    let filesave;
+    try {
+      filesave = await saveFilesToFolder(files, folder);
+    } catch (error) {
+      cleanupFiles(folder);
+      throw error;
+    }
+    IsDriver = IsDriver === "true";
+    const newDriver = new Driver({
+      DriverId: id,
+      UserId: filter.UserId,
+      OperatorId: user.Operator.OperatorId,
+      Name: IsDriver ? profile.Name : Name,
+      Dob: IsDriver ? profile.Dob : Dob,
+      PhoneNo: IsDriver ? user.PhoneNo : PhoneNo,
+      Profile: IsDriver ? profile.Profile : filesave.Profile,
+      AadhaarCard: {
+        Number: IsDriver ? profile.AadhaarCard.Number : AadhaarNumber,
+        FrontImage: IsDriver
+          ? profile.AadhaarCard.FrontImage
+          : filesave.AadhaarFront,
+        BackImage: IsDriver
+          ? profile.AadhaarCard.BackImage
+          : filesave.AadhaarRear,
+      },
+      DrivingLicence: {
+        Number: DLNumber,
+        Expiry: DLValidity,
+        FrontImage: filesave.DLFront,
+        BackImage: filesave.DLRear,
+      },
+    });
+    try {
+      let result = await newDriver.save();
+      res.status(201).json({
+        success: true,
+        message: "Driver Registration in progress",
+      });
+    } catch (error) {
+      cleanupFiles(folder);
+      throw error;
+    }
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === Activation status === === === //
+
+exports.getActivation = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user.Operator || !user.Operator.verified) {
+      return res
+        .status(401)
+        .json({ success: false, message: "unauthorized access" });
+    }
+    const driver = await Driver.findOne({
+      OperatorId: user.Operator.OperatorId,
+      Status: { $ne: "unlinked" },
+    });
+    const cab = await Cab.findOne({
+      OperatorId: user.Operator.OperatorId,
+      Status: { $ne: "unlinked" },
+    });
+    res.status(200).json({
+      success: true,
+      data: { driver: driver ? driver.Status : "", cab: cab ? cab.Status : "" },
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === Register a Cab === === === //
+
+const Cab = require("../Database/collection/Cab");
+const { model } = require("mongoose");
+
+exports.RegisterCab = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user.Operator || !user.Operator.verified) {
+      return res
+        .status(401)
+        .json({ success: false, message: "unauthorized access" });
+    }
+    const { fields, files } = await busboyPromise(req);
+    let { Model, CabNumber } = fields;
+    ["Photo", "Permit", "Authorization", "RegistrationCertificate"].forEach(
+      (itm) => {
+        if (!files[itm]) {
+          throw new Error(
+            `Please select a ${itm === "Photo" ? "Cab" : itm} image`
+          );
+        }
+      }
+    );
+    if (Model == undefined || CabNumber == undefined) {
+      throw new Error(`All fields are required`);
+    }
+    if (!validator.isLength(CabNumber, { max: 14, min: 9 })) {
+      throw new Error("please enter a valid Cab Number");
+    }
+    Model = JSON.parse(Model);
+    ["name", "manufacturer", "segment"].forEach((itm) => {
+      if (!Model[itm]) {
+        throw new Error(`${itm} of cab is required`);
+      }
+    });
+    const exist = await Cab.findOne({ CabNumber, status: { $ne: "unlinked" } });
+    if (exist) {
+      throw new Error("Cab Aleready linked with other operator");
+    }
+    let id = uniqid("Cab-");
+    let folderpath = await path.join(__dirname, "../files/cab/", id);
+    let filesave;
+    try {
+      filesave = await saveFilesToFolder(files, folderpath);
+    } catch (error) {
+      cleanupFiles(folderpath);
+      throw error;
+    }
+    const newcab = new Cab({
+      CabNumber,
+      CabId: id,
+      Manufacturer: Model.manufacturer,
+      Model: Model.name,
+      Category: Model.segment,
+      Photo: filesave.Photo,
+      Document: {
+        Authorization: filesave.Authorization,
+        Permit: filesave.Permit,
+        RegistrationCertificate: filesave.RegistrationCertificate,
+      },
+      OperatorId: user.Operator.OperatorId,
+    });
+    try {
+      let result = await newcab.save();
+      res.status(201).json({
+        success: true,
+        message: "Cab Registration in progress",
+      });
+    } catch (error) {
+      cleanupFiles(folderpath);
+      throw error;
     }
   } catch (error) {
     res.status(400).json({
