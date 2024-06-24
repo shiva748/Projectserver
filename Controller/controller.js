@@ -261,19 +261,16 @@ try {
   cache = new LRUCache({ max: 400000 });
 }
 
-exports.search = async (req, res) => {
-  const { query } = req.body;
-
-  if (!query) {
-    return res.status(400).send({ error: "Search query is required" });
-  }
-
-  const cachedResult = cache.get(query.toLowerCase());
-  if (cachedResult) {
-    console.log(`Found result in cache for query: ${query}`);
-    return res.send(cachedResult);
-  }
+const getSuggestion = async (query) => {
   try {
+    if (!query) {
+      throw new Error("Search query is required");
+    }
+    const cachedResult = cache.get(query.toLowerCase());
+    if (cachedResult) {
+      console.log(`Found result in cache for query: ${query}`);
+      return cachedResult;
+    }
     const response = await fetch(
       `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
         query
@@ -288,8 +285,22 @@ exports.search = async (req, res) => {
 
     console.log(`Adding result to cache for query: ${query}`);
     cache.set(query.toLowerCase(), predictions);
+    return predictions;
+  } catch (error) {
+    throw error;
+  }
+};
 
-    res.send(predictions);
+exports.search = async (req, res) => {
+  const { query } = req.body;
+
+  if (!query) {
+    return res.status(400).send({ error: "Search query is required" });
+  }
+
+  try {
+    let predictions = await getSuggestion(query);
+    res.status(200).json(predictions);
   } catch (error) {
     console.error(error);
     res
@@ -337,19 +348,16 @@ try {
   citycache = new LRUCache({ max: 400000 });
 }
 
-exports.citysearch = async (req, res) => {
-  const { query } = req.body;
-
-  if (!query) {
-    return res.status(400).send({ error: "Search query is required" });
-  }
-
-  const cachedResult = citycache.get(query.toLowerCase());
-  if (cachedResult) {
-    console.log(`Found result in cache for query: ${query}`);
-    return res.send(cachedResult);
-  }
+const getCity = async (query) => {
   try {
+    if (!query) {
+      throw new Error("Search query is required");
+    }
+    const cachedResult = citycache.get(query.toLowerCase());
+    if (cachedResult) {
+      console.log(`Found result in cache for query: ${query}`);
+      return cachedResult;
+    }
     const response = await fetch(
       `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
         query
@@ -364,10 +372,22 @@ exports.citysearch = async (req, res) => {
 
     console.log(`Adding result to cache for query: ${query}`);
     citycache.set(query.toLowerCase(), predictions);
-
-    res.send(predictions);
+    return predictions;
   } catch (error) {
-    console.error(error);
+    throw error;
+  }
+};
+
+exports.citysearch = async (req, res) => {
+  const { query } = req.body;
+
+  if (!query) {
+    return res.status(400).send({ error: "Search query is required" });
+  }
+  try {
+    let predictions = await getCity(query);
+    res.status(200).json(predictions);
+  } catch (error) {
     res
       .status(500)
       .send({ error: "An error occurred while searching for cities" });
@@ -414,21 +434,17 @@ try {
   d_cache = new LRUCache({ max: 800000 });
 }
 
-exports.distance = async (req, res) => {
+const getdistance = async (places) => {
   try {
-    const { places } = req.body;
     if (!places || places.length != 2) {
-      return res.status(400).json({
-        error: "two places are required to calculate distance",
-      });
+      throw new Error("two places are required to calculate distance");
     }
-
     const cachedResult =
       d_cache.get(`${places[0].place_id}${places[1].place_id}`) ||
       d_cache.get(`${places[1].place_id}${places[0].place_id}`);
     if (cachedResult) {
       console.log(`Found result in cache for query`);
-      return res.send({ ...cachedResult, rates: getCurrentRates() });
+      return { ...cachedResult, rates: getCurrentRates() };
     }
     const origin = {
       placeId: places[0].place_id,
@@ -462,11 +478,26 @@ exports.distance = async (req, res) => {
 
     const data = await response.json();
     if (data.error) {
-      return res.status(500).json({ error: data.error.message });
+      throw error;
     }
     data.routes[0].polyline = null;
     d_cache.set(`${places[0].place_id}${places[1].place_id}`, data.routes[0]);
-    res.json({ ...data.routes[0], rates: getCurrentRates() });
+    return { ...data.routes[0], rates: getCurrentRates() };
+  } catch (error) {
+    throw error;
+  }
+};
+
+exports.distance = async (req, res) => {
+  try {
+    const { places } = req.body;
+    if (!places || places.length != 2) {
+      return res.status(400).json({
+        error: "two places are required to calculate distance",
+      });
+    }
+    let dis = await getdistance(places);
+    res.json(dis);
   } catch (error) {
     res
       .status(500)
@@ -1107,6 +1138,7 @@ exports.getActivation = async (req, res) => {
 
 const Cab = require("../Database/collection/Cab");
 const { model } = require("mongoose");
+const { places } = require("googleapis/build/src/apis/places");
 
 exports.RegisterCab = async (req, res) => {
   try {
@@ -1183,3 +1215,4 @@ exports.RegisterCab = async (req, res) => {
     });
   }
 };
+
