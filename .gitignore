@@ -16,9 +16,9 @@ build/
 .vscode/
 .idea/
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# # OS generated files
+# .DS_Store
+# Thumbs.db
 
 # Miscellaneous
 npm-debug.log*
