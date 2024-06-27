@@ -43,23 +43,23 @@ exports.copyRecursive = async (src, dest) => {
   try {
     const stats = await fs.promises.stat(src);
 
-  if (stats.isDirectory()) {
-    await fs.promises.mkdir(dest, { recursive: true });
-    const entries = await fs.promises.readdir(src, { withFileTypes: true });
+    if (stats.isDirectory()) {
+      await fs.promises.mkdir(dest, { recursive: true });
+      const entries = await fs.promises.readdir(src, { withFileTypes: true });
 
-    for (const entry of entries) {
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
+      for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
 
-      if (entry.isDirectory()) {
-        await copyRecursive(srcPath, destPath);
-      } else {
-        await fs.promises.copyFile(srcPath, destPath);
+        if (entry.isDirectory()) {
+          await copyRecursive(srcPath, destPath);
+        } else {
+          await fs.promises.copyFile(srcPath, destPath);
+        }
       }
+    } else {
+      await fs.promises.copyFile(src, dest);
     }
-  } else {
-    await fs.promises.copyFile(src, dest);
-  }
   } catch (error) {
     console.error("Error Copying files:", error);
     throw new Error(`Error Copying files: ${error.message}`);

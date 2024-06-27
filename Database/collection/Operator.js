@@ -1,24 +1,6 @@
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
-const citySchema = new Schema({
-  description: {
-    type: String,
-  },
-  longitude: {
-    type: Number,
-    required: true,
-  },
-  latitude: {
-    type: Number,
-    required: true,
-  },
-  place_id: {
-    type: String,
-    required: true,
-  },
-});
-
 const operatorSchema = new Schema(
   {
     OperatorId: {
@@ -42,10 +24,24 @@ const operatorSchema = new Schema(
       required: true,
     },
     City: {
-      type: citySchema,
+      description: {
+        type: String,
+      },
+      location: {
+        type: {
+          type: String,
+          enum: ["Point"],
+        },
+        coordinates: {
+          type: [Number],
+        },
+      },
+      place_id: {
+        type: String,
+      },
     },
     Dob: {
-      type: String,
+      type: Date,
       required: true,
     },
     AadhaarCard: {
@@ -75,6 +71,9 @@ const operatorSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// Create geospatial index on the 'City.location' field
+operatorSchema.index({ "City.location": "2dsphere" });
 
 // Operator model
 const Operator = mongoose.model("Operator", operatorSchema);

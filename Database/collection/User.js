@@ -3,23 +3,6 @@ const Schema = mongoose.Schema;
 const jwt = require("jsonwebtoken");
 const Bcrypt = require("bcryptjs");
 
-// Define the City schema
-const citySchema = new Schema({
-  description: {
-    type: String,
-  },
-  longitude: {
-    type: Number,
-  },
-  latitude: {
-    type: Number,
-  },
-  place_id: {
-    type: String,
-  },
-});
-
-// Define the User schema
 const userSchema = new Schema({
   UserId: {
     type: String,
@@ -38,7 +21,6 @@ const userSchema = new Schema({
   Password: {
     type: String,
     required: true,
-    minlength: 8,
   },
   PhoneNo: {
     type: String,
@@ -75,10 +57,30 @@ const userSchema = new Schema({
       },
     },
   ],
-  City: citySchema, // Embed the City schema
+  City: {
+    description: {
+      type: String,
+    },
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+      },
+      coordinates: {
+        type: [Number],
+      },
+    },
+    place_id: {
+      type: String,
+    },
+  },
+  Profile: {
+    type: String,
+  },
 });
 
-// Middleware to hash password before saving
+userSchema.index({ "City.location": "2dsphere" });
+
 userSchema.pre("save", async function (next) {
   if (this.isModified("Password")) {
     this.Password = await Bcrypt.hash(this.Password, 12);
@@ -86,7 +88,6 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-// Method to generate authentication token
 userSchema.methods.genrateauth = async function () {
   try {
     let token = jwt.sign({ UserId: this.UserId }, process.env.KEY, {

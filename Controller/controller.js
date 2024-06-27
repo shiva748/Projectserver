@@ -56,6 +56,7 @@ exports.login = async (req, res) => {
           EmailId: user.EmailId,
           PhoneNo: user.PhoneNo,
           City: user.City,
+          Profile: user.Profile,
         },
       });
     } else {
@@ -232,6 +233,7 @@ exports.authenticate = async (req, res) => {
         EmailId: user.EmailId,
         City: user.City,
         Operator: user.Operator,
+        Profile: user.Profile,
       },
     });
   } catch (error) {
@@ -590,6 +592,24 @@ exports.logout = async (req, res) => {
 //     return null;
 //   }
 // }
+
+const llcache = "./cache/ll_cache.json";
+
+let ll_cache;
+
+try {
+  const cachedData = fs.readFileSync(llcache);
+  const parsedCache = JSON.parse(cachedData);
+  ll_cache = new LRUCache({ max: 800000 });
+  Object.entries(parsedCache).forEach(([key, value]) => {
+    ll_cache.set(value[0], value[1].value);
+  });
+  console.log("llcache cache loaded from file.");
+} catch (error) {
+  console.log("Error loading cache:", error);
+  ll_cache = new LRUCache({ max: 800000 });
+}
+
 async function getLatLong(address) {
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
     address
@@ -598,21 +618,29 @@ async function getLatLong(address) {
     if (!address) {
       throw new Error("Please provide an address");
     }
-
+    let ccr = ll_cache.get(address);
+    if (ccr) {
+      console.log("found result in cache for query");
+      return ccr;
+    }
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
-
     const data = await response.json();
     if (data.results && data.results.length > 0) {
       const location = data.results[0].geometry.location;
-      return {
-        latitude: location.lat,
-        longitude: location.lng,
+      let res = {
+        location: {
+          type: "Point",
+          coordinates: [location.lng, location.lat],
+        },
         description: data.results[0].formatted_address,
         place_id: data.results[0].place_id,
       };
+      ll_cache.set(res.description, res);
+      console.log("result updated in cache");
+      return res;
     } else {
       throw new Error("No result found for the provided address.");
     }
@@ -621,22 +649,85 @@ async function getLatLong(address) {
     return null;
   }
 }
-exports.updateCity = async (req, res) => {
+
+const savellCacheToFile = () => {
   try {
-    let { City } = req.body;
-    if (!City) {
-      throw new Error("Please select a city from list");
-    } else if (!City.place_id) {
-      throw new Error("Please select a city from list");
-    }
+    const dump = ll_cache.dump();
+    fs.writeFileSync(llcache, JSON.stringify(dump));
+    console.log("ll Cache saved to file.");
+  } catch (error) {
+    console.error("Error saving cache:", error);
+  }
+};
+
+// Handle process exit event
+process.on("exit", savellCacheToFile);
+
+// Handle process termination signals
+["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) => {
+  process.on(signal, () => {
+    savellCacheToFile();
+    process.exit();
+  });
+});
+exports.updatedetails = async (req, res) => {
+  try {
     let user = req.user;
-    let lola = await getLatLong(City.description);
-    let result = await User.updateOne({ UserId: user.UserId }, { City: lola });
+    let { fields, files } = await busboyPromise(req);
+
+    if (!fields.City && !files.Profile) {
+      throw new Error("Invalid Request");
+    }
+    let update = {};
+    if (fields.City) {
+      fields.City = JSON.parse(fields.City);
+      if (!fields.City.place_id) {
+        throw new Error("Please select a city from list");
+      }
+      let lola = await getLatLong(fields.City.description);
+      update = { City: lola };
+    }
+    if (files.Profile) {
+      let folderpath = path.join(__dirname, "../files/user/", user.UserId);
+      let filesave;
+      try {
+        await cleanupFiles(folderpath);
+        filesave = await saveFilesToFolder(files, folderpath);
+      } catch (error) {
+        throw error;
+      }
+      update = { ...update, Profile: filesave.Profile };
+    }
+    let result = await User.updateOne({ UserId: user.UserId }, update);
     res.status(200).json({
       success: true,
-      message: "City updated successfully",
-      City: lola,
+      message: "details updated successfully",
+      data: update,
     });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// === === === user image === === === //
+
+exports.UserImage = async (req, res) => {
+  try {
+    console.log("hi");
+    const { UserId } = req.params;
+    let user = await User.findOne({ UserId: UserId });
+    let filePath = path.join(
+      __dirname,
+      `../files/user/${UserId}/${user.Profile}`
+    );
+
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(__dirname, `../files/NoProfile.png`);
+    }
+    return res.status(200).sendFile(filePath);
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -740,7 +831,7 @@ exports.registerOperator = async (req, res) => {
     try {
       filesave = await saveFilesToFolder(files, folderPath);
     } catch (error) {
-      cleanupFiles(folderPath);
+      await cleanupFiles(folderPath);
       throw error;
     }
     const operator = new Operator({
@@ -779,7 +870,7 @@ exports.registerOperator = async (req, res) => {
         },
       });
     } catch (error) {
-      cleanupFiles(folderPath);
+      await cleanupFiles(folderPath);
       throw error;
     }
   } catch (error) {
@@ -1050,7 +1141,7 @@ exports.RegisterDriver = async (req, res) => {
           folder
         );
       } catch (error) {
-        cleanupFiles(folder);
+        await cleanupFiles(folder);
         throw error;
       }
     }
@@ -1058,7 +1149,7 @@ exports.RegisterDriver = async (req, res) => {
     try {
       filesave = await saveFilesToFolder(files, folder);
     } catch (error) {
-      cleanupFiles(folder);
+      await cleanupFiles(folder);
       throw error;
     }
     IsDriver = IsDriver === "true";
@@ -1093,7 +1184,7 @@ exports.RegisterDriver = async (req, res) => {
         message: "Driver Registration in progress",
       });
     } catch (error) {
-      cleanupFiles(folder);
+      await cleanupFiles(folder);
       throw error;
     }
   } catch (error) {
@@ -1137,8 +1228,7 @@ exports.getActivation = async (req, res) => {
 // === === === Register a Cab === === === //
 
 const Cab = require("../Database/collection/Cab");
-const { model } = require("mongoose");
-const { places } = require("googleapis/build/src/apis/places");
+const Booking = require("../Database/collection/Booking");
 
 exports.RegisterCab = async (req, res) => {
   try {
@@ -1181,7 +1271,7 @@ exports.RegisterCab = async (req, res) => {
     try {
       filesave = await saveFilesToFolder(files, folderpath);
     } catch (error) {
-      cleanupFiles(folderpath);
+      await cleanupFiles(folderpath);
       throw error;
     }
     const newcab = new Cab({
@@ -1205,7 +1295,7 @@ exports.RegisterCab = async (req, res) => {
         message: "Cab Registration in progress",
       });
     } catch (error) {
-      cleanupFiles(folderpath);
+      await cleanupFiles(folderpath);
       throw error;
     }
   } catch (error) {
@@ -1216,3 +1306,137 @@ exports.RegisterCab = async (req, res) => {
   }
 };
 
+// === === === book outstation === === === //
+
+exports.bookcab = async (req, res) => {
+  try {
+    const user = req.user;
+    let { From, To, Dat, Time, Category, TripType, Offer, Hour, Km } = req.body;
+    ["From", "Dat", "Time", "Category", "TripType", "Offer"].forEach((itm) => {
+      if (!req.body[itm]) {
+        throw new Error("Invalid Request all fields are required");
+      }
+    });
+
+    if (!["Roundtrip", "Oneway", "Rental"].some((itm) => itm == TripType)) {
+      throw new Error("Invalid input 1");
+    }
+
+    if (!["Micro", "Sedan", "MUV", "SUV"].some((itm) => itm == Category)) {
+      throw new Error("Invalid input 2");
+    }
+
+    if (TripType != "Rental" && !To) {
+      throw new Error("Invalid Request all fields are required");
+    }
+    console.log("hi");
+    [From, To].forEach((itm) => {
+      if (itm) {
+        if (
+          ["description", "place_id", "query"].some((subitm) => !itm[subitm])
+        ) {
+          throw new Error("Invalid input");
+        }
+      }
+    });
+    console.log("hi");
+    if (TripType !== "Rental") {
+      let suggest = await getSuggestion(From.query);
+      From = suggest.filter((itm) => itm.place_id == From.place_id)[0];
+      if (!From) {
+        throw new Error("Please select a location from list");
+      }
+      suggest = await getSuggestion(To.query);
+      To = suggest.filter((itm) => itm.place_id == To.place_id)[0];
+      if (!To) {
+        throw new Error("Please select a location from list");
+      }
+    } else {
+      let suggest = await getCity(From.query);
+      From = suggest.filter((itm) => itm.place_id == From.place_id)[0];
+      if (!From) {
+        throw new Error("Please select a City from list");
+      }
+    }
+    let t_d = new Date(Time);
+    let thf = new Date(new Date().getTime() + 1.75 * 3600 * 1000);
+    let d_t = new Date(Dat);
+    d_t.setHours(t_d.getHours());
+    d_t.setMinutes(t_d.getMinutes());
+    if (thf > t_d) {
+      throw new Error("Select a date and time at least 2 hours in the future.");
+    }
+    Dat = d_t;
+    if (TripType !== "Rental") {
+      From = await getLatLong(From.description);
+      To = await getLatLong(To.description);
+      let result = await getdistance([From, To]);
+      const rates = result.rates[Category];
+      const distanceKm = result.distanceMeters / 1000;
+      const hour = parseInt(result.duration.replace("s", ""), 10);
+      if (TripType === "Roundtrip") {
+        Km = Math.ceil(distanceKm * 2);
+        Hour = Math.ceil((hour / 3600) * 2);
+      } else {
+        Km = Math.ceil(distanceKm);
+        Hour = Math.ceil(hour / 3600);
+      }
+      let baseFare = Math.ceil(distanceKm * rates[TripType] * 0.84);
+
+      if (TripType === "Roundtrip") {
+        baseFare *= 2;
+      }
+      if (Offer < baseFare) {
+        throw new Error(`Minimum fare is ₹ ${baseFare}`);
+      } else {
+        console.log(Offer + " is enough");
+      }
+    } else {
+      From = await getLatLong(From.description);
+      if (Hour > 12 || Km > 200) {
+        throw new Error("Invalid Input");
+      }
+      if (Km / 10 < Hour) {
+        throw new Error("Invalid Input");
+      }
+      const result = getCurrentRates();
+      const rates = result[Category];
+
+      if (!rates || !rates["Roundtrip"]) {
+        throw new Error("Invalid carType or tripType");
+      }
+
+      let baseFare = Math.ceil(
+        (Km * rates["Roundtrip"] + Hour * rates["Waitingcharges"]) * 0.84
+      );
+      if (Offer < baseFare) {
+        throw new Error(`Minimum fare is ₹ ${baseFare}`);
+      }
+    }
+
+    let booking = {
+      From,
+      Category,
+      Date: Dat,
+      TripType,
+      Offer,
+      Km,
+      Hour,
+      UserId: user.UserId,
+    };
+    if (TripType !== "Rental") {
+      booking = { ...booking, To };
+    }
+    booking = new Booking(booking);
+    const result = await booking.save();
+    return res.status(201).json({
+      success: true,
+      message: "You'll start receiving offers from drivers shortly.",
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};

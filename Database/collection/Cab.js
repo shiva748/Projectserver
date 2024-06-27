@@ -22,7 +22,7 @@ const cabSchema = new Schema(
     Category:{
       type:String,
       required:true,
-      enum:["Mini","Prime Sedan", "Prime MUV","Prime SUV"]
+      enum:["Micro","Sedan", "MUV","SUV"]
     },
     CabNumber: {
       type: String,

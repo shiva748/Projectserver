@@ -10,7 +10,6 @@ const {
   logout,
   citysearch,
   getRates,
-  updateCity,
   registerOperator,
   OperatorProfile,
   OperatorImage,
@@ -18,6 +17,9 @@ const {
   RegisterDriver,
   getActivation,
   RegisterCab,
+  bookcab,
+  updatedetails,
+  UserImage,
 } = require("../Controller/controller");
 const verifyToken = require("../Middleware/auth");
 
@@ -43,7 +45,7 @@ Router.get("/authenticate", verifyToken, authenticate);
 
 Router.get("/logout", verifyToken, logout);
 
-Router.post("/update-city", verifyToken, updateCity);
+Router.post("/update-details", verifyToken, updatedetails);
 
 Router.post("/operator-registration", verifyToken, registerOperator);
 
@@ -53,10 +55,14 @@ Router.post("/Operator/SearchDriver", verifyToken, SearchDriver);
 
 Router.get("/Operator/media/:OperatorId/image", OperatorImage);
 
+Router.get("/User/media/:UserId/:image", UserImage);
+
 Router.post("/Operator/driver-registration", verifyToken, RegisterDriver);
 
 Router.post("/Operator/Activation/status", verifyToken, getActivation);
 
 Router.post("/Operator/cab-registration", verifyToken, RegisterCab);
+
+Router.post("/Book-cab", verifyToken, bookcab);
 
 module.exports = Router;
