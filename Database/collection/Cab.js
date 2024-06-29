@@ -2,12 +2,12 @@ const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
 const cabSchema = new Schema(
-  { 
-    CabId:{
-      type:String,
-      required:true,
-      unique:true,
-      trim:true
+  {
+    CabId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
     Manufacturer: {
       type: String,
@@ -19,10 +19,10 @@ const cabSchema = new Schema(
       required: true,
       trim: true,
     },
-    Category:{
-      type:String,
-      required:true,
-      enum:["Micro","Sedan", "MUV","SUV"]
+    Category: {
+      type: String,
+      required: true,
+      enum: ["Micro", "Sedan", "MUV", "SUV"],
     },
     CabNumber: {
       type: String,
@@ -54,7 +54,7 @@ const cabSchema = new Schema(
     },
     Status: {
       type: String,
-      enum: ["pending", "verified", "suspended", "unlinked"],
+      enum: ["pending", "verified", "approved", "suspended", "unlinked"],
       default: "pending",
       required: true,
     },

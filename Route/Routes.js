@@ -20,6 +20,7 @@ const {
   bookcab,
   updatedetails,
   UserImage,
+  Activate,
 } = require("../Controller/controller");
 const verifyToken = require("../Middleware/auth");
 
@@ -62,6 +63,8 @@ Router.post("/Operator/driver-registration", verifyToken, RegisterDriver);
 Router.post("/Operator/Activation/status", verifyToken, getActivation);
 
 Router.post("/Operator/cab-registration", verifyToken, RegisterCab);
+
+Router.get("/Operator/Activate", verifyToken, Activate);
 
 Router.post("/Book-cab", verifyToken, bookcab);
 

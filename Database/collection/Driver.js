@@ -36,7 +36,7 @@ const driverSchema = new Schema(
     Status: {
       type: String,
       required: true,
-      enum: ["pending", "verified", "suspended", "unlinked"],
+      enum: ["pending", "verified", "approved", "suspended", "unlinked"],
       default: "pending",
     },
     AadhaarCard: {

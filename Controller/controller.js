@@ -1224,6 +1224,65 @@ exports.getActivation = async (req, res) => {
     });
   }
 };
+// === === === Activate === === === //
+
+exports.Activate = async (req, res) => {
+  try {
+    const user = req.user;
+
+    if (
+      !user.Operator ||
+      !user.Operator.verified ||
+      user.Operator.Status !== "verified"
+    ) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Unauthorized access" });
+    }
+
+    const [driver, cab] = await Promise.all([
+      Driver.findOne({
+        OperatorId: user.Operator.OperatorId,
+        Status: "verified",
+      }),
+      Cab.findOne({ OperatorId: user.Operator.OperatorId, Status: "verified" }),
+    ]);
+
+    if (!driver || !cab) {
+      throw new Error(
+        !driver && !cab
+          ? "Please add a cab and driver"
+          : !cab
+          ? "Please add a cab"
+          : "Please add a driver"
+      );
+    }
+
+    await Operator.updateOne(
+      { OperatorId: user.Operator.OperatorId },
+      { Status: "active" }
+    );
+
+    await User.updateOne(
+      { UserId: user.UserId },
+      {
+        $set: {
+          "Operator.Status": "active",
+          "Operator.verified": true,
+        },
+      }
+    );
+
+    res
+      .status(201)
+      .json({ success: true, message: "Profile activation was successful" });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
 
 // === === === Register a Cab === === === //
 
